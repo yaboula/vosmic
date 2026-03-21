@@ -1,0 +1,46 @@
+# VOSMIC — Default Configuration
+# ================================
+
+audio:
+  sample_rate: 48000
+  block_size: 256          # ~5.3ms per callback at 48kHz
+  channels: 1              # Mono input
+  input_device: null       # Auto-detect default mic
+  output_device: null      # Auto-detect VB-Cable Input
+  ring_buffer_capacity: 4096
+
+dsp:
+  noise_gate_threshold_db: -40
+  loudness_target_lufs: -18
+  pitch_extractor: "rmvpe"       # "rmvpe" (GPU) or "crepe_tiny" (CPU fallback)
+  pitch_hop_length: 160          # ~3.3ms per hop
+  content_encoder: "contentvec"
+  content_encoder_sr: 16000      # ContentVec expects 16kHz
+
+inference:
+  model_path: "models/narrator_v1.onnx"
+  format: "onnx"                 # "pytorch", "onnx", "tensorrt"
+  precision: "fp16"              # "fp32", "fp16", "int8"
+  max_inference_time_ms: 25      # Passthrough triggers after this
+  queue_max_size: 4              # Drop oldest if queue full
+
+postprocessing:
+  compressor:
+    ratio: 3.0
+    threshold_db: -12
+    attack_ms: 5
+    release_ms: 50
+  filter:
+    type: "butterworth"
+    order: 4
+    cutoff_hz: 20000
+  bypass: false
+
+gui:
+  update_interval_ms: 100        # Dashboard refresh rate
+  level_meter_interval_ms: 50    # Audio level meter refresh
+
+system:
+  log_level: "INFO"
+  profile_mode: false
+  passthrough_on_error: true     # CRITICAL: never output silence on failure
