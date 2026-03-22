@@ -29,6 +29,12 @@ dev = [
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gpu: tests requiring GPU hardware (skipped in CI)",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
