@@ -10,7 +10,11 @@ dependencies = [
     "sounddevice>=0.4.6",
     "pyyaml>=6.0",
     "scipy>=1.11",
+    "PyQt6>=6.5",
 ]
+
+[project.scripts]
+vosmic = "src.main:main"
 
 [project.optional-dependencies]
 gpu = [
@@ -23,6 +27,7 @@ dev = [
     "ruff>=0.1",
     "mypy>=1.7",
     "pytest-cov>=4.1",
+    "pytest-timeout>=2.2",
 ]
 
 [build-system]

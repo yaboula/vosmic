@@ -84,9 +84,9 @@ class VosmicPipeline:
     Shutdown order: capture -> threads -> output (reverse).
     """
 
-    def __init__(self, config: VosmicConfig) -> None:
+    def __init__(self, config: VosmicConfig, event_bus: EventBus | None = None) -> None:
         self.config = config
-        self.event_bus = EventBus()
+        self.event_bus = event_bus or EventBus()
 
         self.input_buffer = LockFreeRingBuffer(config.audio.ring_buffer_capacity)
         self.output_buffer = LockFreeRingBuffer(config.audio.ring_buffer_capacity)
@@ -105,6 +105,7 @@ class VosmicPipeline:
         self.output_thread: OutputThread | None = None
         self.post_processor: PostProcessor | None = None
         self.model_manager: ModelManager | None = None
+        self._noise_gate: NoiseGate | None = None
 
         self._is_running = False
         self._metrics_thread: threading.Thread | None = None
@@ -129,6 +130,7 @@ class VosmicPipeline:
             logger.warning("No model loaded at startup, running in passthrough mode")
 
         noise_gate = NoiseGate(self.config.dsp.noise_gate_threshold_db)
+        self._noise_gate = noise_gate
         normalizer = LoudnessNormalizer(self.config.dsp.loudness_target_lufs)
         pitch = PitchExtractor(method=self.config.dsp.pitch_extractor)
         content = ContentEncoder()
@@ -209,14 +211,16 @@ class VosmicPipeline:
         def report_loop() -> None:
             while self._is_running:
                 try:
-                    self.event_bus.emit(
+                    self.event_bus.emit_threadsafe(
                         "latency_update",
                         {"latency_ms": self._estimate_total_latency()},
                     )
                     if self.model_manager:
-                        self.event_bus.emit("vram_update", self.model_manager.get_vram_usage())
+                        self.event_bus.emit_threadsafe(
+                            "vram_update", self.model_manager.get_vram_usage()
+                        )
                     if self.capture and self.output:
-                        self.event_bus.emit(
+                        self.event_bus.emit_threadsafe(
                             "audio_level",
                             {
                                 "input_peak": self.capture.metrics.get("peak_level", 0.0),
@@ -225,7 +229,9 @@ class VosmicPipeline:
                         )
                     cap = self.config.audio.ring_buffer_capacity
                     fill = self.input_buffer.available_read / max(cap, 1) * 100
-                    self.event_bus.emit("buffer_status", {"fill_percent": fill})
+                    self.event_bus.emit_threadsafe(
+                        "buffer_status", {"fill_percent": fill}
+                    )
                 except Exception:
                     logger.exception("Metrics reporter error")
                 time.sleep(0.1)
@@ -270,8 +276,15 @@ class VosmicPipeline:
             if self.model_manager:
                 try:
                     self.model_manager.swap_model(data["model_path"])
+                    vram = self.model_manager.get_vram_usage()
+                    info = self.model_manager.model_info
                     self.event_bus.emit(
-                        "model_loaded", {"name": data["model_path"], "format": "", "vram_mb": 0.0}
+                        "model_loaded",
+                        {
+                            "name": info.get("name", data["model_path"]),
+                            "format": info.get("format", "unknown"),
+                            "vram_mb": vram.get("used_mb", 0.0),
+                        },
                     )
                 except Exception as e:
                     self.event_bus.emit("model_load_error", {"error": str(e)})
@@ -279,7 +292,8 @@ class VosmicPipeline:
             if self.post_processor:
                 self.post_processor.set_bypass(data["enabled"])
         elif cmd_type == "set_noise_gate":
-            pass
+            if self._noise_gate is not None:
+                self._noise_gate.set_threshold(data.get("threshold_db", -40.0))
         elif cmd_type == "shutdown":
             self.stop()
 

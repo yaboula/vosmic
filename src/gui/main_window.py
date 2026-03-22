@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -38,6 +39,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._bus = event_bus
         self._bypass = False
+        self._tray: QSystemTrayIcon | None = None
 
         self.setWindowTitle(WINDOW_TITLE)
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
@@ -64,6 +66,10 @@ class MainWindow(QMainWindow):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh)
         self._timer.start(DASHBOARD_REFRESH_MS)
+
+    def set_system_tray(self, tray: QSystemTrayIcon) -> None:
+        """Wire the system tray after construction (tray needs window reference)."""
+        self._tray = tray
 
     def _build_controls(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -101,8 +107,12 @@ class MainWindow(QMainWindow):
         pass
 
     def closeEvent(self, event: object) -> None:  # type: ignore[override]  # noqa: N802
-        self._bus.send_command("shutdown", {})
-        super().closeEvent(event)  # type: ignore[arg-type]
+        if self._tray is not None and self._tray.isVisible():
+            self.hide()
+            event.ignore()  # type: ignore[union-attr]
+        else:
+            self._bus.send_command("shutdown", {})
+            super().closeEvent(event)  # type: ignore[arg-type]
 
     def show_and_populate(self) -> None:
         """Show window and populate device lists."""

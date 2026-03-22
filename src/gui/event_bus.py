@@ -101,6 +101,19 @@ class EventBus:
             except Exception:
                 logger.exception("Error in event callback for %s", event_type)
 
+    def emit_threadsafe(self, event_type: str, data: dict[str, Any] | None = None) -> None:
+        """Emit ensuring callbacks run on the Qt main thread.
+
+        Use this when emitting from a non-GUI thread (e.g. metrics reporter).
+        Falls back to regular emit() if Qt event loop is not running.
+        """
+        try:
+            from PyQt6.QtCore import QTimer
+
+            QTimer.singleShot(0, lambda: self.emit(event_type, data))
+        except (ImportError, RuntimeError):
+            self.emit(event_type, data)
+
     @property
     def subscriber_count(self) -> int:
         with self._lock:
